@@ -147,3 +147,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ImageGenerate": "Generate Image",
     # "DisplayText": "Displays Text"
 }
+
+__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
