@@ -1,7 +1,7 @@
 [project]
 name = "comfy-openwebuiapi"
 description = "Add nodes for interacting with Ollama through the Open WebUI API."
-version = "1.0.0"
+version = "1.0.1"
 license = {file = "LICENSE"} 
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
