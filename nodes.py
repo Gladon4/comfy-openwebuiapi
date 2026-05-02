@@ -1,8 +1,11 @@
-import requests
+import base64
 import io
-from PIL import Image
-import torch
+
 import numpy as np
+import requests
+import torch
+from PIL import Image
+
 
 class ConnecitonNode:
     def __init__(self):
@@ -14,7 +17,7 @@ class ConnecitonNode:
             "required": {
                 "ip": ("STRING", {"default": "localhost"}),
                 "port": ("INT", {"default": 3000, "min": 0, "max": 65535}),
-                "api_token": ("STRING", {"default": ""})
+                "api_token": ("STRING", {"default": ""}),
             }
         }
 
@@ -47,13 +50,14 @@ class Generate:
             "required": {
                 "connection": ("*", {"forceInput": True}),
                 "prompt": ("STRING", {"default": "Why is the sky blue?"}),
-                "model": ("STRING", {"default": "gpt-oss:120b"})
+                "model": ("STRING", {"default": "gpt-oss:120b"}),
             },
             "optional": {
                 "context": ("*", {"default": []}),
-            }
+                "image": ("IMAGE", {"default": []}),
+            },
         }
-    
+
     RETURN_NAMES = ("connection", "response", "context")
     RETURN_TYPES = ("*", "STRING", "*")
 
@@ -67,72 +71,102 @@ class Generate:
         else:
             context = []
 
-        url = f"http://{connection["ip"]}:{connection["port"]}/ollama/api/chat"
-        headers = {"Authorization": f"Bearer {connection["api_token"]}", "Content-Type": "application/json"}
-
-        context += [{
-                "role": "user",
-                "content": prompt
-                }]
-
-        data = {
-            "model": model,
-            "messages": context,
-            "stream": False
-            
+        url = f"http://{connection['ip']}:{connection['port']}/ollama/api/chat"
+        headers = {
+            "Authorization": f"Bearer {connection['api_token']}",
+            "Content-Type": "application/json",
         }
 
+        content = [{"type": "text", "text": prompt}]
+
+        if "image" in kwargs:
+            tensor_image = kwargs["image"].squeeze(0)  # shape (1, H, W, 3) -> (H, W, 3)
+            np_image = tensor_image.numpy()
+            image = Image.fromarray(np_image)
+
+            base64_image = self.convert_image_to_base64(image)
+
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image;base64,{base64_image}"},
+                }
+            )
+
+        context += [{"role": "user", "content": content}]
+
+        data = {"model": model, "messages": context, "stream": False}
+
         response = requests.post(url, headers=headers, json=data, stream=False)
+
+        # response = response.json()
+        # answer = ""
+        # if "choices" in response:
+        #     # Just a fix for now
+        #     # In case the Model response with multiple choices, always choose the 1st
+        #     # There is supposed to be an 'n' parameter to set this, but i don't know how yet
+        #     answer = response["choices"][0]["message"]["content"]
+        #     context += [response["choices"][0]["message"]]
+        # else:
+
         answer = response.json()["message"]["content"]
         context += [response.json()["message"]]
 
         return (connection, answer, context)
 
+    def convert_image_to_base64(self, image: Image):
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue())
+        return img_str
 
 
 class ImageGenerate:
     def __init__(self):
         pass
-    
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "connection": ("*", {"forceInput": True}),
-                "prompt": ("STRING", {"default": "A cool car."})
+                "prompt": ("STRING", {"default": "A cool car."}),
             },
         }
-    
+
     RETURN_NAMES = ("connection", "image")
     RETURN_TYPES = ("*", "IMAGE")
 
     FUNCTION = "generate"
 
     CATEGORY = "open_web_ui"
-    
+
     def generate(self, connection, prompt):
-        url = f"http://{connection["ip"]}:{connection["port"]}/api/v1/images/generations"
-        headers = {"Authorization": f"Bearer {connection["api_token"]}", "Content-Type": "application/json"}
-
-
-        data = {
-            "prompt": prompt            
+        url = (
+            f"http://{connection['ip']}:{connection['port']}/api/v1/images/generations"
+        )
+        headers = {
+            "Authorization": f"Bearer {connection['api_token']}",
+            "Content-Type": "application/json",
         }
+
+        data = {"prompt": prompt}
 
         gen = requests.post(url, headers=headers, json=data, stream=False).json()
         relative_url = gen[0]["url"]
-        img_url = f"http://{connection["ip"]}:{connection["port"]}{relative_url}"
+        img_url = f"http://{connection['ip']}:{connection['port']}{relative_url}"
         img = requests.get(img_url, headers=headers).content
 
         image = Image.open(io.BytesIO(img)).convert("RGB")  # ensure 3 channels
-    
+
         np_image = np.array(image)  # shape (H, W, 3)
         tensor_image = torch.from_numpy(np_image).float() / 255.0
-        
+
         # Add batch dimension
         tensor_image = tensor_image.unsqueeze(0)  # shape (1, H, W, 3)
-        
+
         return (connection, tensor_image)
+
 
 NODE_CLASS_MAPPINGS = {
     "Connection Node": ConnecitonNode,
