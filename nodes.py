@@ -77,37 +77,25 @@ class Generate:
             "Content-Type": "application/json",
         }
 
-        content = [{"type": "text", "text": prompt}]
+        message = {"role": "user", "content": prompt}
 
         if "image" in kwargs:
-            tensor_image = kwargs["image"].squeeze(0)  # shape (1, H, W, 3) -> (H, W, 3)
-            np_image = tensor_image.numpy()
-            image = Image.fromarray(np_image)
+            tensor_image = kwargs["image"]
+            # squeeze(): shape (1, H, W, 3) -> shape (H, W, 3)
+            np_img = tensor_image.squeeze().detach().cpu().numpy()
+            np_img = (np_img * 255).clip(0, 255).astype(np.uint8)
+
+            image = Image.fromarray(np_img)
 
             base64_image = self.convert_image_to_base64(image)
 
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image;base64,{base64_image}"},
-                }
-            )
+            message["images"] = [str(base64_image)]
 
-        context += [{"role": "user", "content": content}]
+        context.append(message)
 
         data = {"model": model, "messages": context, "stream": False}
 
         response = requests.post(url, headers=headers, json=data, stream=False)
-
-        # response = response.json()
-        # answer = ""
-        # if "choices" in response:
-        #     # Just a fix for now
-        #     # In case the Model response with multiple choices, always choose the 1st
-        #     # There is supposed to be an 'n' parameter to set this, but i don't know how yet
-        #     answer = response["choices"][0]["message"]["content"]
-        #     context += [response["choices"][0]["message"]]
-        # else:
 
         answer = response.json()["message"]["content"]
         context += [response.json()["message"]]
@@ -117,7 +105,7 @@ class Generate:
     def convert_image_to_base64(self, image: Image):
         buffered = io.BytesIO()
         image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue())
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
         return img_str
 
 
@@ -179,5 +167,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Connection Node": "Connection Node",
     "Generate": "Generate",
     "ImageGenerate": "Generate Image",
-    # "DisplayText": "Displays Text"
 }
