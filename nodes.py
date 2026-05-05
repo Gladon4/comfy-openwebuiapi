@@ -4,7 +4,26 @@ import io
 import numpy as np
 import requests
 import torch
+from aiohttp import web
 from PIL import Image
+from server import PromptServer
+
+
+@PromptServer.instance.routes.get("/comfy-openwebui/models")
+async def get_models(request):
+    ip = request.query.get("ip")
+    port = request.query.get("port")
+    token = request.query.get("token")
+
+    url = f"http://{ip}:{port}/ollama/api/tags"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        response = requests.get(url, headers=headers).json()
+        models = [m["name"] for m in response.get("models", [])]
+        return web.json_response(models)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
 
 
 class ConnecitonNode:
@@ -17,27 +36,21 @@ class ConnecitonNode:
             "required": {
                 "ip": ("STRING", {"default": "localhost"}),
                 "port": ("INT", {"default": 3000, "min": 0, "max": 65535}),
-                "api_token": ("STRING", {"default": ""}),
+                "api_token": ("STRING",),
             }
         }
 
-    RETURN_NAMES = ("connection", "models")
-    RETURN_TYPES = ("*", "*")
+    RETURN_NAMES = ("connection",)
+    RETURN_TYPES = ("*",)
 
     FUNCTION = "connect"
 
     CATEGORY = "open_web_ui"
 
     def connect(self, ip, port, api_token):
-        url = f"http://{ip}:{port}/ollama/api/tags"
-        headers = {"Authorization": f"Bearer {api_token}"}
-
-        response = requests.get(url, headers=headers).json()
-        models = [model_dict["name"] for model_dict in response["models"]]
-
         connection = {"ip": ip, "port": port, "api_token": api_token}
 
-        return (connection, models)
+        return (connection,)
 
 
 class Generate:
@@ -50,7 +63,8 @@ class Generate:
             "required": {
                 "connection": ("*", {"forceInput": True}),
                 "prompt": ("STRING", {"default": "Why is the sky blue?"}),
-                "model": ("STRING", {"default": "gpt-oss:120b"}),
+                # "model": ([""], {"dynamic": True}),
+                "model": ("STRING", {"default": ""}),
             },
             "optional": {
                 "context": ("*", {"default": []}),
@@ -71,9 +85,13 @@ class Generate:
         else:
             context = []
 
-        url = f"http://{connection['ip']}:{connection['port']}/ollama/api/chat"
+        ip = connection["ip"]
+        port = connection["port"]
+        api_token = connection["api_token"]
+
+        url = f"http://{ip}:{port}/ollama/api/chat"
         headers = {
-            "Authorization": f"Bearer {connection['api_token']}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
         }
 
@@ -130,11 +148,13 @@ class ImageGenerate:
     CATEGORY = "open_web_ui"
 
     def generate(self, connection, prompt):
-        url = (
-            f"http://{connection['ip']}:{connection['port']}/api/v1/images/generations"
-        )
+        ip = connection["ip"]
+        port = connection["port"]
+        api_token = connection["api_token"]
+
+        url = f"http://{ip}:{port}/api/v1/images/generations"
         headers = {
-            "Authorization": f"Bearer {connection['api_token']}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
         }
 
