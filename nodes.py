@@ -6,6 +6,7 @@ import requests
 import torch
 from aiohttp import web
 from PIL import Image
+
 from server import PromptServer
 
 
@@ -51,6 +52,29 @@ class ConnecitonNode:
         connection = {"ip": ip, "port": port, "api_token": api_token}
 
         return (connection,)
+
+
+class SystemPromptNode:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "optional": {
+                "system_prompt": ("STRING", {"default": "You are helpful assistant."}),
+            }
+        }
+
+    RETURN_NAMES = ("context",)
+    RETURN_TYPES = ("*",)
+
+    FUNCTION = "create_prompt"
+
+    CATEGORY = "open_web_ui"
+
+    def create_prompt(self, system_prompt):
+        return ([{"role": "system", "content": system_prompt}],)
 
 
 class Generate:
@@ -116,7 +140,7 @@ class Generate:
         response = requests.post(url, headers=headers, json=data, stream=False)
 
         answer = response.json()["message"]["content"]
-        context += [response.json()["message"]]
+        context.append(response.json()["message"])
 
         return (connection, answer, context)
 
@@ -180,6 +204,7 @@ NODE_CLASS_MAPPINGS = {
     "Connection Node": ConnecitonNode,
     "Generate": Generate,
     "ImageGenerate": ImageGenerate,
+    "SystemPromt": SystemPromptNode,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -187,4 +212,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Connection Node": "Connection Node",
     "Generate": "Generate",
     "ImageGenerate": "Generate Image",
+    "SystemPrompt": "Greate System Prompt",
 }
