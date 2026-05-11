@@ -92,7 +92,7 @@ class Generate:
             },
             "optional": {
                 "context": ("*", {"default": []}),
-                "image": ("IMAGE", {"default": []}),
+                "images": ("IMAGE", {"default": []}),
             },
         }
 
@@ -121,17 +121,21 @@ class Generate:
 
         message = {"role": "user", "content": prompt}
 
-        if "image" in kwargs:
-            tensor_image = kwargs["image"]
-            # squeeze(): shape (1, H, W, 3) -> shape (H, W, 3)
-            np_img = tensor_image.squeeze().detach().cpu().numpy()
-            np_img = (np_img * 255).clip(0, 255).astype(np.uint8)
+        if "images" in kwargs:
+            tensor_images = kwargs["images"]
+            batch_size = tensor_images.shape[0]
+            message["images"] = []
 
-            image = Image.fromarray(np_img)
+            for i in range(batch_size):
+                tensor_image = tensor_images[i]  # shape: (H, W, 3)
 
-            base64_image = self.convert_image_to_base64(image)
+                np_img = tensor_image.detach().cpu().numpy()
+                np_img = (np_img * 255).clip(0, 255).astype(np.uint8)
 
-            message["images"] = [str(base64_image)]
+                image = Image.fromarray(np_img)
+
+                base64_image = self.convert_image_to_base64(image)
+                message["images"].append(str(base64_image))
 
         context.append(message)
 
