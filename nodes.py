@@ -54,7 +54,7 @@ class ConnecitonNode:
         return (connection,)
 
 
-class SystemPromptNode:
+class ModelParameters:
     def __init__(self):
         pass
 
@@ -62,19 +62,46 @@ class SystemPromptNode:
     def INPUT_TYPES(cls):
         return {
             "optional": {
-                "system_prompt": ("STRING", {"default": "You are helpful assistant."}),
-            }
+                "temperature": (
+                    "FLOAT",
+                    {"default": 0.7, "min": 0, "max": 1, "step": 0.01},
+                ),
+                "seed": ("INT", {"default": -1, "min": -1, "max": 2**32 - 1}),
+                "repeat_penalty": (
+                    "FLOAT",
+                    {"default": 1.1, "min": 0, "max": 2, "step": 0.01},
+                ),
+                "num_predict": ("INT", {"default": -1, "min": -1, "max": 4096}),
+                "top_k": ("INT", {"default": 40, "min": -1, "max": 10000}),
+                "stop": ("STRING", {"default": "", "multiline": False}),
+                "num_ctx": ("INT", {"default": 2048, "min": 1, "max": 250000}),
+            },
         }
 
-    RETURN_NAMES = ("context",)
+    RETURN_NAMES = ("parameters",)
     RETURN_TYPES = ("*",)
 
-    FUNCTION = "create_prompt"
+    FUNCTION = "get_params"
 
     CATEGORY = "open_web_ui"
 
-    def create_prompt(self, system_prompt):
-        return ([{"role": "system", "content": system_prompt}],)
+    def get_params(self, **kwargs):
+        params = {}
+        if "temperature" in kwargs and kwargs["temperature"] != 0.7:
+            params["temperature"] = kwargs["temperature"]
+        if "seed" in kwargs and kwargs["seed"] != -1:
+            params["seed"] = kwargs["seed"]
+        if "repeat_penalty" in kwargs and kwargs["repeat_penalty"] != 1.1:
+            params["repeat_penalty"] = kwargs["repeat_penalty"]
+        if "num_predict" in kwargs and kwargs["num_predict"] != -1:
+            params["num_predict"] = kwargs["num_predict"]
+        if "top_k" in kwargs and kwargs["top_k"] != 40:
+            params["top_k"] = kwargs["top_k"]
+        if "stop" in kwargs and kwargs["stop"] != "":
+            params["stop"] = [kwargs["stop"]]
+        if "num_ctx" in kwargs and kwargs["num_ctx"] != 2048:
+            params["num_ctx"] = kwargs["num_ctx"]
+        return (params,)
 
 
 class Generate:
@@ -87,12 +114,12 @@ class Generate:
             "required": {
                 "connection": ("*", {"forceInput": True}),
                 "prompt": ("STRING", {"default": "Why is the sky blue?"}),
-                # "model": ([""], {"dynamic": True}),
                 "model": ("STRING", {"default": ""}),
             },
             "optional": {
                 "context": ("*", {"default": []}),
                 "images": ("IMAGE", {"default": []}),
+                "parameters": ("*", {"default": {}}),
             },
         }
 
@@ -141,10 +168,14 @@ class Generate:
 
         data = {"model": model, "messages": context, "stream": False}
 
+        params = kwargs.get("parameters", {})
+        if params:
+            data["options"] = params
+
         response = requests.post(url, headers=headers, json=data, stream=False)
 
         answer = response.json()["message"]["content"]
-        context.append(response.json()["message"])
+        context += [response.json()["message"]]
 
         return (connection, answer, context)
 
@@ -208,13 +239,13 @@ NODE_CLASS_MAPPINGS = {
     "Connection Node": ConnecitonNode,
     "Generate": Generate,
     "ImageGenerate": ImageGenerate,
-    "SystemPromt": SystemPromptNode,
+    "ModelParameters": ModelParameters,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Connection Node": "Connection Node",
-    "Generate": "Generate",
+    "Generate": "Generate Text",
     "ImageGenerate": "Generate Image",
-    "SystemPrompt": "Greate System Prompt",
+    "ModelParameters": "Model Parameters",
 }
